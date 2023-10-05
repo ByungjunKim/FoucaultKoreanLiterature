@@ -1,1 +1,1 @@
-# FoucaultKoreaLiterature
+# FoucaultKoreanLiterature
