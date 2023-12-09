@@ -1,0 +1,235 @@
+---
+title: "FoucaultSTM"
+format: html
+editor: visual
+---
+
+## 미셸 푸코 인용논문 STM
+
+```{r}
+library(tidyverse)
+library(stm)
+library(stminsights)
+library(parallel)
+library(vroom)
+library(reticulate)
+py_config()
+```
+
+```{r}
+df <- data.frame(py_load_object('230907_한국현대문학_2008_2021_연구자정보합본_tokens.pkl'))
+```
+
+```{r}
+# 필요한 컬럼만 활용
+df <- df %>% select(artiId, year, mf, birth, gender, tokens)
+```
+
+```{r}
+# 토큰 리스트->문자열 처리 (for STM)
+df$tokens <- map_chr(df$tokens,str_c,collapse='  ')
+```
+
+```{r}
+# 성별 명목변수화
+df <- df %>% filter(gender!='NaN') # 성별 없는 경우 제거
+df$gender <- as.factor(unlist(df$gender))
+df$mf <- as.factor(df$mf)
+```
+
+```{r}
+# 푸코 인용 논문만 따로 저장
+df_mf <- df %>% filter(mf==1)
+```
+
+#### STM 용으로 텍스트 전처리
+
+```{r}
+myprocess <- textProcessor(df$tokens, metadata = df ,wordLengths=c(1,Inf),lowercase = F,
+                           removenumbers = F, removepunctuation = F, removestopwords = F, stem = F)
+myprocess
+length(myprocess$docs.removed)
+```
+
+```{r}
+myprocess_mf <- textProcessor(df_mf$tokens, metadata = df_mf ,wordLengths=c(1,Inf),lowercase = F,
+                           removenumbers = F, removepunctuation = F, removestopwords = F, stem = F)
+myprocess_mf
+length(myprocess_mf$docs.removed)
+```
+
+```{r}
+# N개 이상의 문서에서 등장한 단어만 사용(lower.thresh)
+out <- prepDocuments(myprocess$documents, myprocess$vocab, myprocess$meta,lower.thresh = 300)
+```
+
+```{r}
+out_mf <- prepDocuments(myprocess_mf$documents, myprocess_mf$vocab, myprocess_mf$meta,lower.thresh = 30)
+```
+
+#### 모델링
+
+```{r}
+model1_searchK <- searchK(out$documents, out$vocab, K = c(4:30),
+                                prevalence = ~mf+s(year),
+                                data = out$meta, init.type="Spectral"
+                                  ,cores=detectCores()-1)
+saveRDS(model1_searchK,'model1_searchK.rds')
+```
+
+```{r}
+plot(model1_searchK)
+```
+
+```{r}
+model1_searchK_mf <- searchK(out_mf$documents, out_mf$vocab, K = c(4:30),
+                                prevalence = ~gender+s(year),
+                                data = out_mf$meta, init.type="Spectral"
+                                  ,cores=detectCores()-1)
+```
+
+```{r}
+plot(model1_searchK_mf)
+```
+
+```{r}
+stm_model1 <- stm(out$documents, out$vocab, K=13,
+              prevalence= ~mf+gender+s(year),
+              data=out$meta, init.type="Spectral",seed=2023,
+              verbose = F)
+```
+
+```{r}
+summary(stm_model1)
+```
+
+```{r}
+plot(stm_model1,type='summary',labeltype = 'frex',n=10)
+```
+
+```{r}
+m1_K <- stm_model1$settings$dim$K
+stm_effect_model <-  estimateEffect(1:m1_K ~mf+s(year),
+                                 stm_model1, meta = out$meta, uncertainty = "Global",prior=1e-5)
+```
+
+```{r}
+summary(stm_effect_model, topics= 1:m1_K)
+```
+
+```{r}
+# 명목변수 효과 시각화
+# plot.estimateEffect(stm_effect_model, covariate = "gender", 
+#                     topics = c(1:m1_K), method = "difference",
+#                     model = stm_model1, # to show labels alongside
+#                     cov.value1 = "남", cov.value2 = "여",
+#                     xlab = "여 <-----------------> 남", xlim = c(-.4, .4),
+#                     labeltype = "frex", n = 5, 
+#                     width = 100,  verbose.labels = F)
+# 명목변수 효과 시각화
+plot.estimateEffect(stm_effect_model, covariate = "mf", 
+                    topics = c(1:m1_K), method = "difference",
+                    model = stm_model1, # to show labels alongside
+                    cov.value1 = "1", cov.value2 = "0",
+                    xlab = "푸코 비인용 <------------------------> 푸코 인용", xlim = c(-.4, .4),
+                    labeltype = "frex", n = 10, 
+                    width = 100,  verbose.labels = F)
+```
+
+```{r}
+plot.estimateEffect(stm_effect_model, covariate = "mf", 
+                    topics = c(1:m1_K), method = "difference",
+                    model = stm_model1, # to show labels alongside
+                    cov.value1 = "1", cov.value2 = "0",
+                    xlab = "푸코 비인용 <-----------------> 푸코 인용", xlim = c(-.4, .4),
+                    width = 100,  verbose.labels = F,labeltype='numbers',
+                    )
+```
+
+```{r}
+#### 시간에 따른 토픽 비율 변화 (토픽별로)
+stm_label<- labelTopics(stm_model1, n = 10)
+# stm_custom_label <- c('접종순서','거리두기 단계','국내 감염 상황','생활/문화/교육','관련연구/기술',
+#                                       '지원정책','관련주','백신 승인','미국 대선','경제 전망','정부/청와대',
+#                                       '해외 감염 상황','접종후속대책','변이 바이러스','국제협력','증상/전파','백신/치료제 개발','부작용')
+
+par(mfrow=c(2,2))
+j <- 1
+for (i in c(1:m1_K))
+{
+  plot(stm_effect_model, "year", method = "continuous", topics = i, printlegend = F,
+  # main = stm_custom_label[j], xaxt = "n")
+  #main = paste(paste0('T', i,':'),paste(stm_custom_label[i], collapse = ", "),sep=' '),
+  #xaxt ="n")
+  
+  # 토픽 이름대신 keyword로 표현하고 싶으면 아래 main 활용 
+  main =  paste('topic', i,paste(stm_label$frex[i,1:4], collapse = ", "),sep=' '))
+  
+  yearseq <- seq(from=as.Date('2008-01-01'), to=as.Date('2021-12-31'),by='year')
+yearnames <- year(yearseq)
+axis(1,at=as.numeric(yearseq) - min(as.numeric(yearseq)),labels=yearnames)
+  
+  j <- j+1
+
+}
+```
+
+#### 푸코인용 논문 內
+
+```{r}
+stm_model1_mf <- stm(out_mf$documents, out_mf$vocab, K=12,
+              prevalence= ~gender+s(year),
+              data=out_mf$meta, init.type="Spectral",seed=2023,
+              verbose = F)
+```
+
+```{r}
+summary(stm_model1_mf)
+```
+
+```{r}
+plot(stm_model1_mf,type='summary',labeltype = 'frex',n=10)
+```
+
+```{r}
+m1_K_mf <- stm_model1_mf$settings$dim$K 
+stm_effect_model_mf <-  estimateEffect(1:m1_K_mf~gender+s(year),
+                                 stm_model1_mf, meta = out_mf$meta, uncertainty = "Global",prior=1e-5)
+```
+
+```{r}
+summary(stm_effect_model_mf, topics= 1:m1_K_mf)
+```
+
+```{r}
+# 명목변수 효과 시각화
+plot.estimateEffect(stm_effect_model_mf, covariate = "gender",
+                    topics = c(1:m1_K_mf), method = "difference",
+                    model = stm_model1_mf, # to show labels alongside
+                    cov.value1 = "남", cov.value2 = "여",
+                    xlab = "여 <----------------------> 남", xlim = c(-.4, .4),
+                    labeltype = "frex", n = 10,
+                    width = 100,  verbose.labels = F)
+```
+
+#### Interaction
+
+```{r}
+stm_model1_inter <- stm(out$documents, out$vocab, K=12,
+              prevalence= ~gender*year,
+              data=out$meta, init.type="Spectral",seed=2023,
+              verbose = F)
+```
+
+```{r}
+stm_effect_model_inter <-  estimateEffect(1:m1_K ~gender*year,
+                                 stm_model1_inter, meta = out$meta, uncertainty = "Global",prior = 1e-5)
+```
+
+```{r}
+save.image('230926.RData')
+```
+
+```{r}
+run_stminsights()
+```
