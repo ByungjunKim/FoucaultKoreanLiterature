@@ -18,5 +18,5 @@
 ### 3. 저자
 * 김병준(KAIST 디지털인문사회과학센터 연구조교수, bjkim@byungjunkim.com)
 * 허예슬(성균관대학교 국어국문학과 박사수료, yeseul-huh@daum.net)
-* 최주찬(성균관대학교 국어국문학과 석사과정, cjc2851@naver.com)
+* 최주찬(성균관대학교 국어국문학과 석사수료, cjc2851@naver.com)
 * 최진석(성균관대학교 한국문화연구소 연구교수, gkman1@hanmail.net)
