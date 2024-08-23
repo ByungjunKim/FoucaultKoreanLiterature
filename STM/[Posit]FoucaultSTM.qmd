@@ -12,17 +12,12 @@ library(stm)
 library(stminsights)
 library(parallel)
 library(vroom)
-library(readxl)
-library(purrr)
-library(stringr)
-library(tm)
-# library(reticulate)
-# py_config()
+library(reticulate)
+py_config()
 ```
 
 ```{r}
-# df <- data.frame(py_load_object('230907_한국현대문학_2008_2021_연구자정보합본_tokens.pkl'))
-df <- read_xlsx('./230907_한국현대문학_2008_2021_연구자정보합본_tokens.xlsx')
+df <- data.frame(py_load_object('230907_한국현대문학_2008_2021_연구자정보합본_tokens.pkl'))
 ```
 
 ```{r}
@@ -32,19 +27,7 @@ df <- df %>% select(artiId, year, mf, birth, gender, tokens)
 
 ```{r}
 # 토큰 리스트->문자열 처리 (for STM)
-# df$tokens <- map_chr(df$tokens,str_c,collapse='  ')
-# df$tokens 열의 각 문자열을 처리하여 단일 문자열로 결합
-df$tokens <- map_chr(df$tokens, function(x) {
-  # 리스트의 문자열 표현에서 불필요한 문자를 제거하고, 단일 문자열로 변환
-  x <- str_replace_all(x, "\\[|\\]|'", "")  # 대괄호와 작은 따옴표 제거
-  x <- str_split(x, ",\\s*")[[1]]  # 콤마로 구분된 문자열을 리스트로 변환
-  str_c(x, collapse = '  ')  # 리스트를 단일 문자열로 결합
-})
-```
-
-```{r}
-# df$tokens의 첫 번째 요소를 출력하여 결과 확인
-print(df$tokens[1])
+df$tokens <- map_chr(df$tokens,str_c,collapse='  ')
 ```
 
 ```{r}
@@ -87,12 +70,11 @@ out_mf <- prepDocuments(myprocess_mf$documents, myprocess_mf$vocab, myprocess_mf
 #### 모델링
 
 ```{r}
-# 오래걸려서 주석처리함
-# model1_searchK <- searchK(out$documents, out$vocab, K = c(4:30),
-#                                 prevalence = ~mf+s(year),
-#                                 data = out$meta, init.type="Spectral"
-#                                   ,cores=detectCores()-1)
-# saveRDS(model1_searchK,'model1_searchK.rds')
+model1_searchK <- searchK(out$documents, out$vocab, K = c(4:30),
+                                prevalence = ~mf+s(year),
+                                data = out$meta, init.type="Spectral"
+                                  ,cores=detectCores()-1)
+saveRDS(model1_searchK,'model1_searchK.rds')
 ```
 
 ```{r}
@@ -100,14 +82,14 @@ plot(model1_searchK)
 ```
 
 ```{r}
-# model1_searchK_mf <- searchK(out_mf$documents, out_mf$vocab, K = c(4:30),
-#                                 prevalence = ~gender+s(year),
-#                                 data = out_mf$meta, init.type="Spectral"
-#                                   ,cores=detectCores()-1)
+model1_searchK_mf <- searchK(out_mf$documents, out_mf$vocab, K = c(4:30),
+                                prevalence = ~gender+s(year),
+                                data = out_mf$meta, init.type="Spectral"
+                                  ,cores=detectCores()-1)
 ```
 
 ```{r}
-# plot(model1_searchK_mf)
+plot(model1_searchK_mf)
 ```
 
 ```{r}
